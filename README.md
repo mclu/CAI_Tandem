@@ -1,27 +1,16 @@
 # Center for Academic Innovation - Tandem
 
 ## Overview
-The repo analyzes
+The repo showcases my work at Center for Academic Innovation. The scripts mainly analyzed the differences between the beginning of term (BOT) survey and the end of term (EOT) survey of two UM courses. Data were collected from students using Tandem as their assistive learning tool in class. More information about Tandem, please refer to the article [*"The 3 Things to Know about Tandem"*](https://ai.umich.edu/blog/the-3-things-to-know-about-tandem/).
 
 ## Navigation
-- [DNA_Crohn.R](https://github.com/mclu/RECS2015/blob/master/DNA_Crohn.R): The script of analysis.
-- [DNA_Crohn.Rmd](https://github.com/mclu/RECS2015/blob/master/DNA_Crohn.Rmd), [results.pdf](https://github.com/mclu/RECS2015/blob/master/results.pdf): Files producing the results.
 
-## Installation
-Data can be downloaded using the command line.   
-Details of the data and experiment can be found on the [Gene Expression Omnibus website](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE138311).
+Businesses and Leaders: The Positive Differences (BA200) Course:
+- [F19_EDA.Rmd](https://github.com/mclu/CAI_Tandem/blob/master/BA200/F19_EDA.Rmd), [F19_EDA.html](https://github.com/mclu/CAI_Tandem/blob/master/BA200/F19_EDA.html): In this exploratory data analysis, I looked into students responses of two surveys in different sections and demographics, then determined if there is any significant changes over the course of the term.
 
-```bash
-wget -O - ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE138nnn/GSE138311/matrix/GSE138311_series_matrix.txt.gz | gunzip -c > matrix.txt
-```
+- [F19_clustering.Rmd](https://github.com/mclu/CAI_Tandem/blob/master/BA200/F19_clustering.Rmd), [F19_clustering.html](https://github.com/mclu/CAI_Tandem/blob/master/BA200/F19_clustering.html): We explored student behavior in Fall 2019 class by analyzing the BOT survey. The K-means clustering technique was implemented to understand underlying student types and how those types relate to outcomes. The result showed that students can divide into four groups - self-starter, procrastinator, introvert, and extrovert. The analysis helped behavioral scientists better understand student behavior and facilitate their development of tailored messages for Tandem.
 
-To run the R script, the following packages should be pre-installed in the IDE.
-```r
-install.packages('tidyverse')
-install.packages('data.table')
-install.packages('parallel')
-install.packages('future')
-```
+- [threshold_shiny.R](https://github.com/mclu/CAI_Tandem/blob/master/BA200/threshold_shiny.R): An interactive graph was created to help behavioral scientists understand the number of students meeting complex tailoring thresholds and what tailored messages were received by students the most.
 
-## Remark
-The repo is a revised work of the course [Stats506 Computational Methods and Tools in Statistics](https://jbhender.github.io/Stats506/F19/index.html) taught by Dr. Henderson.
+Engineering 100 (ENGR100) Course:
+- [W19_surveyEDA.Rmd](https://github.com/mclu/CAI_Tandem/blob/master/ENGR100/W19_surveyEDA.Rmd), [W19_surveyEDA.html](https://github.com/mclu/CAI_Tandem/blob/master/ENGR100/W19_surveyEDA.html): This is similar to the exploratory analysis for BA200 class. I used to diverging stacked bar chart and modified Wilcoxon signed-rank test to compare the BOT and EOT surveys.
