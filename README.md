@@ -1,1 +1,27 @@
-# CAI_Tandem
+# Center for Academic Inovation - Tandem
+
+## Overview
+The repo analyzes
+
+## Navigation
+- [DNA_Crohn.R](https://github.com/mclu/RECS2015/blob/master/DNA_Crohn.R): The script of analysis.
+- [DNA_Crohn.Rmd](https://github.com/mclu/RECS2015/blob/master/DNA_Crohn.Rmd), [results.pdf](https://github.com/mclu/RECS2015/blob/master/results.pdf): Files producing the results.
+
+## Installation
+Data can be downloaded using the command line.   
+Details of the data and experiment can be found on the [Gene Expression Omnibus website](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE138311).
+
+```bash
+wget -O - ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE138nnn/GSE138311/matrix/GSE138311_series_matrix.txt.gz | gunzip -c > matrix.txt
+```
+
+To run the R script, the following packages should be pre-installed in the IDE.
+```r
+install.packages('tidyverse')
+install.packages('data.table')
+install.packages('parallel')
+install.packages('future')
+```
+
+## Remark
+The repo is a revised work of the course [Stats506 Computational Methods and Tools in Statistics](https://jbhender.github.io/Stats506/F19/index.html) taught by Dr. Henderson.
