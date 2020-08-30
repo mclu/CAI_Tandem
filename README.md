@@ -1,4 +1,4 @@
-# Center for Academic Inovation - Tandem
+# Center for Academic Innovation - Tandem
 
 ## Overview
 The repo analyzes
