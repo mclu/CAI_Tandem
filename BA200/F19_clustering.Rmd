@@ -1,0 +1,384 @@
+---
+title: "Tandem, BA200 Fall 2019"
+subtitle: "Clustering Analysis"
+author: "Ming-Chen Lu, mingchlu@umich.edu"
+date: "April 30, 2020"
+#date: "`r format.Date(Sys.Date(), '%B %d, %Y')`"
+geometry: "left = 2cm, right = 2cm, top = 2cm, bottom = 2cm"
+output: 
+  html_document:
+    toc: yes
+    code_folding: "hide"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE, echo = TRUE, warning = FALSE,
+                      result = "asis", fig.align = "center")
+library(knitr)
+library(rgl)
+knit_hooks$set(webgl = hook_webgl)
+```
+
+## 1. Objective
+We aim to explore *students' behavior* of beginning of term suvey in BA200 Fall 2019 class. In other words, we're trying to understand if there are types and if those types relate to outcomes in any way. This can also relate to how we should *speak* to students, not how they'll do.
+
+## 2. Introduction
+Clustering is a statistical technique that involves finding meaningful groups of the objects such that the objects are similar or related in a group and dissimilar to the objects in other groups.
+
+By conducting clustering analysis, we can better understand our BOT_data and further see if students are related to each other in certain ways.
+
+## 3. Exploratory Data Analysis
+### 3.1 BoT Survey
+
+```{r}
+library(tidyverse)
+theme_set(theme_bw())
+library(ggpubr)
+library(psych)
+
+file = read.csv("./data/BA200-Fall2019_deidentified.csv")
+var_rm = c("STDNT_ASIAN_IND", "STDNT_BLACK_IND", "STDNT_HWIAN_IND", 
+           "STDNT_HSPNC_IND", "STDNT_NTV_AMRCN_IND", "STDNT_WHITE_IND", 
+           "STDNT_MULTI_ETHNC_IND", "STDNT_HSPNC_LATINO_IND")
+data = file[,-c(3:8, 11, 12)] 
+data[which(data$STDNT_DMSTC_MNRTY_DES == "International"),
+     "STDNT_DMSTC_MNRTY_CD"] = 2
+data[which(data$STDNT_DMSTC_UNDREP_MNRTY_DES == "International"),
+     "STDNT_DMSTC_UNDREP_MNRTY_CD"] = 2
+data = data %>% filter(BOT_Extraversion != -1) %>% drop_na()
+
+demo = data[,c(1:10)]
+BOT = data[, c(1, grep("BOT", names(data)))]
+MT = data[, c(1, grep("MT", names(data)))]
+EOT = data[, c(1, grep("EOT", names(data)))]
+BOT_clu = BOT[,c(5:10, 18:20)]
+describe(BOT_clu)
+```
+
+`BOT_PastPositive` and `BOT_PastDiverse` are moderately skewed to the left, others are fairly symmetrical. Distributions of variables are light-tailed since kurtois < 3.
+
+```{r, fig.cap=caps, fig.width=8, fig.height=6}
+b_out = outlier(BOT_clu, cex = .8, plot = F)
+pairs.panels(BOT_clu, bg=c("yellow","blue")[(b_out > 30)+1], pch=21,
+             main = "Pair Plots of BOT Scale Data")
+caps = paste0('**Figure 1.** The matrix shows the Peasron correlation, the histograms, and locally smoothed regressions. An ellipse around the mean with the axis length reflecting one standard deviation of the x and y variables. Blue points are potential outliers.')
+```
+
+`BOT_Extraversion` shows a positive correlation (r = 0.5) with `BOT_SpeakUp` while it shows a negative correlation (r = -0.26) with `BOT_Belongingness`. Others variables show little correlation with each other.
+
+### 3.2 EoT Survey
+
+```{r}
+EOT_clu = EOT[,c(2:14, 18:26)]
+describe(EOT_clu)
+```
+
+Variables are generally skewed to the left. `EOT_SelfBelonging`, `EOT_PeerBelonging`, and `EOT_PeerReliability` have heavy tails since kurtois > 3.
+
+```{r, fig.cap=caps, fig.width=10, fig.height=8}
+e_out = outlier(EOT_clu, cex = .8, plot = F)
+pairs.panels(EOT_clu[,c(1:13)], bg=c("yellow","blue")[(e_out > 80)+1], 
+             pch=21, main = "Pair Plots of EOT Scale Data")
+caps = paste0('**Figure 2.** The first 13 variables from EOT data.')
+```
+
+`EOT_SelfIdeas` and `EOT_Extraversion`, (`EOT_SelfEnacted` and `EOT_SelfQuality`, `EOT_SelfEnacted` and `EOT_SelfValuable`, `EOT_SelfQuality` and `EOT_SelfValuable` are
+correlated (r > 0.6).
+
+```{r, fig.cap=caps, fig.width=8, fig.height=6}
+pairs.panels(EOT_clu[,-c(1:13)], bg=c("yellow","blue")[(e_out > 80)+1], 
+             pch=21, main = "Pair Plots of EOT Scale Data")
+caps = paste0('**Figure 3.** Rest of the 9 variables from EOT data.')
+```
+
+`EOT_PeerEffort`, `EOT_PeerEnacted`, `EOT_PeerIdeas`, `EOT_PeerQuality`, `EOT_PeerTeacher`, and `EOT_PeerValuable` are highly correlated.
+
+## 4. Clustering Techniques
+### 4.1 K-means Clustering
+We apply standard K-means algorithm on continuous variables extracted from BoT survey. The variables include `BOT_Extraversion`, `BOT_Procrastination`, `BOT__Belongingness`, `BOT_SpeakUp`, `BOT_Control`, `BOT_StretchGrade`, `BOT_PastPositive`, `BOT_PastDiverse`, and `BOT_PastWorkDifferent`.
+
+Since k-means suffers from the initial centroids problem, meaning that the randomly selected intial centroid will cause the resulting clusters to vary a lot, we let the algorithm run 20 times under Euclidean distance and return the clustering partition that corresponds to the smallest total within-cluster sum of squares. The computational cost for K-means is low but its limitations include sensitive to outliers and difficulties with clusters of different sizes, densities, and non-spherical shapes.
+
+```{r, fig.height=4, fig.width=4}
+#80: ---------------------------------------------------------------------------
+# K-means: ---------------------------------------------------------------------
+set.seed(123)
+k_max = 8
+wss = sapply(1:k_max, function(k) kmeans(BOT_clu, k, nstart = 20)$tot.withinss)
+plot(1:k_max, wss, type="b", pch = 19, xlab = "Number of clusters K",
+     ylab = "Total within-clusters sum of squares")
+```
+The elbow plot suggests that `k = 4` or `k = 5` clusters are reasonable since their variance within clusters are small. Hence, we try both cluster and the sample size for each cluster is shown below.
+
+| cluster |  1  |  2  |  3  |  4  |  5  |
+|:-------:|:---:|:---:|:---:|:---:|:---:|
+| k = 4   | 131 | 176 | 119 | 125 |     |
+| k = 5   | 120 | 110 | 104 | 102 | 115 |
+
+```{r}
+# k = 4
+set.seed(123)
+km4 = kmeans(BOT_clu, 4, nstart = 20)
+#table(km4$cluster)
+
+# k = 5
+set.seed(123)
+km5 = kmeans(BOT_clu, 5, nstart = 20)
+#table(km5$cluster)
+```
+
+### 4.2 Hierarchical Clustering
+Hierarchical clustering is also a common approach to use in supervised learning. It's an agglomerative (bottom-up) approach, which differs from the partitional clustering like K-means. They are various ways to define the inter-cluster dissimilarity. Three most-widely used measures are complete-linkage, single-linkage and average-linkage. Complete-linkage is robust to outliers while single-linkage is not. On ther other hand, single-linkage can handle diverse sizes of clusters while complete-linkage tends to break large clusters. Average-linkage is somewhere in between. However, all three measures has a preference for spherical clusters.
+
+```{r, fig.width=12}
+hc_complete = hclust(dist(BOT_clu), method = "complete")
+hc_average = hclust(dist(BOT_clu), method = "average")
+hc_single = hclust(dist(BOT_clu), method = "single")
+
+par(mfrow = c(1,3))
+plot(hc_complete, main = "Complete Linkage", xlab = "", sub = "", cex = .9)
+plot(hc_average, main = "Average Linkage", xlab = "", sub = "", cex = .9)
+plot(hc_single, main = "Single Linkage", xlab = "", sub = "", cex = .9)
+```
+
+### 4.3 DBSCAN
+K-means clustering and hierarchical clustering are suitable for finding spherical-shaped clusters that are compact and well-separated. However, they are also relatively sensitive to noise and outliers in the BOT_data. 
+
+DBSCAN, a density-based algorithm introduced in Ester et al. 1996, has the advantage in handling arbitrarily-shaped clusters and being robust to outliers. The idea behind DBSCAN is that for points in a cluster, their kth nearest neighbors are roughly the same distance. Two required parameters are *epsilon*, the radius of neighborhood around a point i , and the *minimum points*, the minimum number of neighbors within epislon radius. The plot below can help us determine the optimal epsilon value.
+
+```{r, fig.height=4, fig.width=4}
+library(dbscan)
+# Determine the optimal eps value
+par(mfrow = c(1,1))
+kNNdistplot(BOT_clu, k = 10)
+abline(h = 3, col = "red", lty = 2)
+abline(h = 4, col = "blue", lty = 2)
+dbs = dbscan(BOT_clu, eps = 3, minPts = 5)
+dbs
+```
+
+## 5. Cluster Validity
+### 5.1 Numerical Assessment
+To evaluate the quality of clustering algorithms, we're going to use the *silhouette coefficients*. 
+
+The silhouette coefficient for point i is defined by
+$$s_i = \frac{b_i - a_i}{max(a_i, b_i)} = 1 - \frac{a_i}{b_i}, \ if \ a_i \le b_i$$ 
+,where $a_i$ is the average distance of object i to the other objects in the same cluster and $b_i = min_kd(i,k), d(i,k)$ is the average distance from object i to all objects k which does not contain i. 
+
+It measures how close each point in one cluster is to points in the neighboring clusters. The silhoutte coefficient ranges from -1 to 1. Value close to 1 indicates that the sample is far away from the neighboring clusters. Value close to 0 indicates ambiguity since the points, on average, are very close to the decision boundary between two neighboring clusters. Value close to -1 indicates poor clustering since those samples might have been assigned to the wrong cluster.
+
+```{r}
+library(cluster)
+# k-means
+# unscaled
+set.seed(123)
+k = 3
+km = kmeans(BOT_clu, k, nstart = 20)
+diss = daisy(BOT_clu)
+sil = silhouette(km$cluster, diss)
+#summary(sil, FUN = mean)
+# k = 3 - 0.15, k = 4 - 0.14, k = 5 - 0.13
+
+# scaled
+set.seed(123)
+k = 3
+km = kmeans(scale(BOT_clu), k, nstart = 20)
+diss = daisy(BOT_clu)
+sil = silhouette(km$cluster, diss)
+# k = 3 - 0.14, k = 4 - 0.11, k = 5 - 0.09
+
+# HC
+#summary(silhouette(cutree(hc_complete, 3), diss))
+# DBSCAN
+#summary(silhouette(dbscan(BOT_clu, eps = 3, minPts = 5)$cluster, diss), col = "blue")
+```
+
+The silhouette coefficients for 6 different methods:
+
+| K/Eps | Kmeans | Kmeans(Scaled) | HC(Complete-linkage) | HC(Single-linkage) | HC(Average-linkage) | DBSCAN |
+|:-----:|:-------:|:---------------:|:--------------------:|:------------------:|:-------------------:|:------:|
+|   3   | 0.15    | 0.14            | 0.03                 | 0.25               | 0.22                | 0.26   |
+|   4   | 0.14    | 0.11            | 0.04                 | 0.16               | 0.18                | 0.33   |
+|   5   | 0.13    | 0.09            | 0.07                 | 0.08               | 0.14                | NA     |
+
+The above table shows that DBSCAN with epsilon = 4 has the highest coefficient 0.33. 
+We also plot the K-means with k = 4 to illustrate. 
+
+```{r}
+plot(silhouette(km$cluster, diss), col=c("blue", "red", "orange"), border=NA,
+     main = "Silhouette plot of K-means with k = 3")
+```
+
+### 5.2 Visual Assessment
+In addition to numerical assessment, we provide boxplots to evaluate the clusters. Since the silhouette coefficients are generally higher when we have 3 clusters, we will look at the boxplots of each method when clusters = 3.
+
+```{r}
+# k-means
+km3 = kmeans(BOT_clu, 3, nstart = 20)$cluster
+k3 = BOT_clu %>% 
+  mutate(km3 = km3) %>%
+  group_by(km3) %>%
+  pivot_longer(cols = 1:9, names_to = "variable", values_to = "value") %>%
+  ggplot(aes(x = km3, y = value, group = km3)) +
+  geom_boxplot() +
+  facet_wrap(variable~.) + xlab("K-means")
+
+# HC
+h3 = BOT_clu %>% 
+  mutate(hc3 = cutree(hc_average, 3)) %>%
+  group_by(hc3) %>%
+  pivot_longer(cols = 1:9, names_to = "variable", values_to = "value") %>%
+  ggplot(aes(x = hc3, y = value, group = hc3)) +
+  geom_boxplot() +
+  facet_wrap(variable~.) + xlab("Hierarchical")
+
+# DBSCAN
+d3 = BOT_clu %>% 
+  mutate(dbs3 = dbs$cluster+1) %>%
+  group_by(dbs3) %>%
+  pivot_longer(cols = 1:9, names_to = "variable", values_to = "value") %>%
+  ggplot(aes(x = dbs3, y = value, group = dbs3)) +
+  geom_boxplot() +
+  facet_wrap(variable~.) + xlab("DBSCAN")
+```
+
+Sample size for each cluster:
+
+|       cluster       |  1  |  2  |  3  |
+|:-------------------:|:---:|:---:|:---:|
+| k-means             | 177 | 187 | 187 |
+| HC(average-linkage) | 547 | 3   | 1   |
+| DBSCAN              | 545 | 6   | 0   |
+
+```{r, fig.width=12, fig.height=6}
+ggarrange(k3, h3, d3, nrow = 1)
+```
+
+- In K-means clustering, the distribution of `BOT_Procrastination` and `BOT_SpeakUp` are different among three clusters. 
+
+## 6. Conclusion
+- It seems like only some of the students behave differently while most of them belong to the same cluster.
+
+- From the numerical assessment, we would rule out the hierarchical method since the cluster result isn't helpful. As for the choice between k-means and DBSCAN, we might have to look into how students' behavior between clusters differ to decide which one to choose.
+
+## Next Step...
+1. Is it appropriate to use the Euclidean distance to measure the similarity and dissimilarity of the discrete BOT_data? The study (Boriah et al. 2008) suggests that the Lin, OF, Goodall3 measures are robust to outliers when measuring distance for categorical BOT_data, so it might be a good idea to try those distance measures on our BOT_dataset and see how the resulting cluster perform. (R package: https://cran.r-project.org/web/packages/nomclust/nomclust.pdf)
+
+*Attempt*: Based on the numercial and visual assessment, the result didn't differ much after trying different similarity measures. Hence, we will stick to the Euclidean distance.
+
+2. Figure out a way to see how different clusters relate to outcome.
+
+#### Question
+1. What is outcome?
+
+2. Any suggestion on choosing the clustering method? What aspect of the students' behavior should I look for?
+
+Cait: The question we face in Tandem is: Are there any BOT_data that we could be informed by at the beginning of class that should affect how we believe a student will perform in the course, particularly in regards to how they'll behave in a group setting? And then since we can't quite speak to every student individually, could we speak to them in patterns? And those pattern don't have to be completely uniform. so, if we wanted to send an email to all students after they've started the group project, and we wanted to give them advice on how to talk to their group members about hard topics. We will do better if we're speaking to 5-8 groups, rather than 200 students. But, as you've seen from the threshold BOT_data, I might belong to more than one group!
+
+## 7. Update: May 4, 2020
+
+### 7.1 K-menas with K = 4
+Since the research goal is to divide students into groups and be able to send them tailoring messages, we prefer to have roughlt equal number of students per group and thus use the k-means clustering result to proceed the analysis.
+
+We look at the clustering result from each variable and as a whole first.
+
+```{r, fig.cap=caps}
+BOT$cluster = km4$cluster
+BOT %>% 
+  select(c(5:10, 18:21)) %>%
+  pivot_longer(cols = 1:9) %>%
+  ggplot(aes(x = cluster, y = value, group = cluster)) +
+  geom_boxplot() +
+  facet_wrap(name~.)
+caps = paste0("**Figure 4.** *Distributions of each variable by clusters.*")
+```
+
+```{r}
+df = BOT %>% 
+  select(c(5:10, 18:21)) %>%
+  pivot_longer(cols = 1:9) %>%
+  group_by(cluster, name) %>%
+  summarise(m = mean(value), s = sd(value))
+  
+ggplot(df, aes(x = cluster, y = m, group = cluster)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = m-s, ymax = m+s), width = .2) +
+  facet_wrap(name~.) + ylab("mean")
+```
+
+The variables, except `BOT_PastDiverse`, `BOT_PastPositive`, and `BOT_PastWorkDifferent`,  generally have different distributions among four clusters.
+
+I also used pricipal component analysis (PCA) to visualize the clustering result. Note that the first-three principals explained around 60% of the variance.
+
+```{r, webgl=TRUE}
+pca = princomp(BOT_clu)
+summary(pca)
+
+pca$loadings
+pc = principal(BOT_clu, 3, rotate = "none")
+scores = data.frame(id = c(1:551), pca$scores)
+plot3d(scores[,2:4], col = BOT$cluster)
+text3d(scores[,2], scores[,3], scores[,4], scores[,1])
+
+BOT_clu[c(153, 240, 285, 304),]
+BOT_clu[c(109, 377, 394, 542),]
+```
+https://stats.stackexchange.com/questions/143905/loadings-vs-eigenvectors-in-pca-when-to-use-one-or-another
+https://stats.stackexchange.com/questions/218600/why-are-regression-coefficients-in-a-factor-analysis-model-called-loadings/218647#218647
+https://stats.stackexchange.com/questions/119746/what-is-the-proper-association-measure-of-a-variable-with-a-pca-component-on-a/119758#119758
+
+
+### 7.2 Interpretation
+
+Next, we aim to see whether these four clusters have different characteristics. Since the previous exploratory analysis shows correlation between variables, I assume that there are a set of underlying factors that can explain the interrelationships among them. By identifying a set of factors, it could be easier to characterize students in different groups. 
+
+Hence, I used factor analysis to identify those factors. The number of factors was chosen using the scree plot. The values on the arrows below indicate standardized loadings for each component. 
+
+```{R}
+#VSS.scree(BOT_clu)
+paf1 = fa(BOT_clu, nfactors=3, rotate="varimax", SMC=T, symmetric=T, fm="pa")
+fa.diagram(paf1)
+```
+
+By comparing the four factors to the above boxplots by each cluster, interpretations of the four clusters are as follow:
+
+- Group 1 (n = 131, proportion = 24%): Students are generally more willing to speak up in group and expect to fit in well in class. They are also doers who are less likely to procrastinate.
+
+- Group 2 (n = 176, proportion = 32%): This group of students tend to be the opposite of group 1. They listen more and less willing to speak up. They are also more likely to feel out of place in class.
+
+- Group 3 (n = 119, proportion = 22%): They are the ones that consider sharing work is good and hope the class is challenging even though they might not get a high grade.
+
+- Group 4 (n = 125, proportion = 23%): They are procrastinators who value grades over learning. On average, they are extroverted and experienced similar work style to their teammates.
+
+I also looked at how these four groups of students perform at the end of the term.
+
+```{r}
+# Factor analysis
+#EOT_clu = EOT[, c(2:14,18:26)]
+#paf2 = fa(EOT_clu, nfactors=5, rotate="varimax", SMC=T, symmetric=T, fm="pa")
+#fa.diagram(paf2)
+
+df = inner_join(EOT, BOT[,c("user_id", "cluster")], by = "user_id")
+
+df %>% select(1, 2:10, 18:27) %>%
+  pivot_longer(cols = 2:19) %>%
+  ggplot(aes(x = cluster, y = value, group = cluster)) +
+  geom_boxplot() +
+  facet_wrap(name~.)
+
+df %>% select(1, 11:14, 27) %>%
+  pivot_longer(cols = 2:5) %>%
+  ggplot(aes(x = cluster, y = value, group = cluster)) +
+  geom_boxplot() +
+  facet_wrap(name~.)
+```
+
+- Generally, group 1 and group 4 consider themselves doing more than their fair share of work and students in group 4 view themselves as more "valuable".
+
+- Students in group 2 are good listeners either evaluated by themselves or peers.
+
+## Reference
+[1] Selecting the number of clusters with silhouette analysis on KMeans clustering. From https://scikit-learn.org/stable/auto_examples/cluster/plot_kmeans_silhouette_analysis.html
+
+[2] Ji Zhu, 2020, Cluster Analysis, lecture notes, stats 503, University of Michigan
+

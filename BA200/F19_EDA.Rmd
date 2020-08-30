@@ -1,0 +1,403 @@
+---
+title: "Academic Innovation"
+subtitle: "BA200 Fall 2019"
+author: "Amy Lu, mingchlu@umich.edu"
+date: "`r format.Date(Sys.Date(), '%B %d, %Y')`"
+geometry: "left = 2cm, right = 2cm, top = 2cm, bottom = 2cm"
+output: 
+  html_document:
+    code_folding: hide
+    toc: yes
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE, echo = TRUE, result = "asis")
+
+# Libraries: -------------------------------------------------------------------
+library(tidyverse)
+library(ggpubr)
+library(DT)
+
+# Read in data: ----------------------------------------------------------------
+setwd("/Users/Amy/Desktop/AI/tandem/BA200")
+BOT = read_csv("BA200_F19_BOT.csv")
+EOT = read_csv("BA200_F19_EOT.csv")
+
+# Data Cleaning: ---------------------------------------------------------------
+colnames(BOT) = str_remove(colnames(BOT), "ba200__")
+colnames(EOT) = str_remove(colnames(EOT), "ba200__")
+
+# select key columns
+vars_BOT = c("user_id", "sections", "Gender", "Location", "BT_Orientation", 
+             "GroupPreference")
+vars_EOT = c("user_id", "sections", "ET_Orientation", "ET_GroupPreference", 
+             "Eval_Use", "Eval_Useful")
+
+# Drop unused columns, drop rows with any missing values.
+BOT = BOT %>% select(vars_BOT) %>% drop_na()
+EOT = EOT %>% select(vars_EOT) %>% drop_na() %>% 
+  filter(Eval_Use != -1 & Eval_Useful != -1)
+```
+
+## Objective
+**Are there any significant differences in how students in different sections or with different demographics responded to BOT and EOT surveys?**
+
+There are total of 616 students and 16 sections. The locations include Central, A2, North, Hill, and Far.
+
+Variables interested:
+
+1. `Eval_Use`:  
+How interested would you be in using Tandem again? Scale from 1 to 5 (not at all interested to very interested).
+
+2. `Eval_Useful`:  
+How useful do you think Tandem was to you this term? Scale from 1 to 5 (not at all useful to very useful).
+
+3. `BT/ET_Orientation`:  
+If I could only get one outcome from BA200, it would be most important for me to: 
+    - [Grade] Earn a good grade
+    - [Performance] Be among the top performing teams in $Course
+    - [Learn] Understand the subject well
+    - [Practice] Get practice with the relevant skills
+    - [Groupwork] Improve my ability to work with a group
+    - [None] None of the above
+    
+4. `GroupPreference/ET_GroupPreference`:  
+If given an option, I’d prefer to:
+    - [Alone] Work alone
+    - [Partner] Work with one partner
+    - [Group] Work in a group
+
+## Orientation
+
+### Descriptive Statistics
+
+```{r Descriptive - Orientation, fig.cap = cap, fig.align="center"}
+BT_O = data.frame(table(BOT$sections, BOT$BT_Orientation))
+colnames(BT_O) = c("sections", "Orientation", "BOT")
+BT_O = BT_O %>% group_by(Orientation) %>% summarise(BOT = sum(BOT))
+
+ET_O = data.frame(table(EOT$sections, EOT$ET_Orientation))
+colnames(ET_O) = c("sections", "Orientation", "EOT")
+ET_O = ET_O %>% group_by(Orientation) %>% summarise(EOT = sum(EOT))
+
+df_O = left_join(BT_O, ET_O, by = c("Orientation"))
+
+cap = paste0("**Figure 1.** *Number of students for each outcome.* Grade ",
+            "remains the highest frequency while the frequency of Practice ",
+            "decreases and the frequency of Groupwork increases as the ",
+            "course moved toward the end of the term. The total counts are 616",
+            " students for BOT and 530 students for EOT.")
+
+pivot_longer(df_O, 2:3) %>%
+  group_by(name) %>% arrange(-value) %>%
+  mutate(Orientation = 
+           factor(Orientation, 
+                  levels = c("Grade", "Practice", "Performance", 
+                             "Learn", "Groupwork", "None"))) %>%
+  ggplot(aes(x = Orientation, y = value, fill = name)) +
+  geom_bar(position="dodge", stat="identity") +
+  geom_text(aes(label=value), vjust=-.8, color="black",
+            position = position_dodge(0.9), size=3.5) +
+  ylab("Counts") + labs(fill = "Survey") + xlab("") +
+  scale_fill_manual(values = c("#FFcb05", "#00285E")) +
+  theme_bw()
+```
+
+```{r BOT vs EOT Orientation}
+t = as.table(cbind(as.numeric(df_O$BOT), as.numeric(df_O$EOT)))
+dimnames(t) = list(Orientation = c("Grade", "Performance", "Learn", 
+                                   "Practice", "Groupwork", "None"),
+                   Term = c("BOT", "EOT"))
+chisq = chisq.test(t, correct=FALSE)
+```
+
+*The Pearson's Chi-squared test shows that the `Orientation` for BOT and EOT are different at level $\alpha$ = .05 ($p$-value < 0.00).*
+
+### Interaction between options
+```{r Orientation - Interaction}
+df = EOT %>% left_join(BOT, by = "user_id") %>%
+  select(user_id, BT_Orientation, ET_Orientation) %>% drop_na()
+df$BT_Orientation = factor(df$BT_Orientation,
+                           levels = c("Grade", "Practice", "Performance", 
+                                      "Learn", "Groupwork", "None"))
+df$ET_Orientation = factor(df$ET_Orientation,
+                           levels = c("Grade", "Practice", "Performance", 
+                                      "Learn", "Groupwork", "None"))            
+
+tbl = table(BOT = df$BT_Orientation, EOT = df$ET_Orientation)
+tbl = prop.table(tbl, 1)
+
+df_tbl = 
+  as.data.frame(table(BOT = df$BT_Orientation, EOT = df$ET_Orientation)) %>%
+  left_join(as.data.frame(tbl), by = c("BOT", "EOT")) %>%
+  mutate(Freq = sprintf("%.0f (%.0f%%)", Freq.x, Freq.y*100)) %>%
+  select(BOT, EOT, Freq) %>%
+  rename(`Frequency (Percentage)` = Freq) %>%
+  arrange(BOT)
+
+wide = pivot_wider(df_tbl, names_from = EOT, values_from = `Frequency (Percentage)`)
+names(wide)[1] = ""
+
+knitr::kable(wide)
+```
+
+### Interaction between options by section
+```{r Orientation - sections}
+df_sec = EOT %>% left_join(BOT, by = c("user_id", "sections")) %>%
+  transmute(user_id, BT_Orientation, ET_Orientation,
+            sections = str_remove(sections, "Section 0"))
+df_sec$BT_Orientation = factor(df_sec$BT_Orientation,
+                           levels = c("Grade", "Practice", "Performance", 
+                                      "Learn", "Groupwork", "None"))
+df_sec$ET_Orientation = factor(df_sec$ET_Orientation,
+                           levels = c("Grade", "Practice", "Performance", 
+                                      "Learn", "Groupwork", "None"))  
+
+tbl_sec = table(BOT = df_sec$BT_Orientation, EOT = df_sec$ET_Orientation, 
+                Section = df_sec$sections)
+tbl_sec = prop.table(tbl_sec, c(3,1))
+
+df_tbl_sec = as.data.frame(prop.table(tbl_sec, c(3,1))) %>%
+  transmute(Section, BOT, EOT, Freq = sprintf("%2.0f%%", Freq*100)) %>%
+  arrange(BOT)
+
+wide = pivot_wider(df_tbl_sec, names_from = EOT, values_from = Freq)
+names(wide)[2] = "BOT \\ EOT"
+
+options(DT.options = list(pageLength = 16))
+datatable(wide, rownames = F, options = list(
+  columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+
+
+```{r Orientation - Sections descriptive, fig.cap=cap, fig.width = 9}
+BT_Os = BOT %>% group_by(sections, BT_Orientation) %>% 
+  rename(Orientation = BT_Orientation) %>% summarise(BOT = n())
+ET_Os = EOT %>% group_by(sections, ET_Orientation) %>% 
+  rename(Orientation = ET_Orientation) %>% summarise(EOT = n())
+
+df_Os = left_join(BT_Os, ET_Os, by = c("sections", "Orientation")) %>%
+  ungroup() %>%
+  mutate(sections = str_remove(sections, "Section 0"))
+
+plot_line = df_Os %>% 
+  mutate(Orientation = factor(Orientation, 
+                              levels = c("Grade", "Practice", "Performance", 
+                             "Learn", "Groupwork", "None"))) %>%
+  group_by(Orientation) %>% 
+  summarise(mB = mean(BOT), mE = mean(EOT, na.rm = T))
+
+# Histogram
+df_Os %>% pivot_longer(3:4, names_to = "Survey") %>%
+  mutate(Orientation = factor(Orientation, 
+                              levels = c("Grade", "Practice", "Performance", 
+                                         "Learn", "Groupwork", "None"))) %>%
+  ggplot(aes(x = sections, y = value, fill = Survey)) +
+  geom_bar(na.rm = T, stat="identity", position="dodge") + 
+  facet_wrap(~Orientation, nrow = 2) + ylab("Counts") +
+  geom_hline(data = plot_line, aes(yintercept = mB), 
+             color = "gold2", size = .5) +
+  geom_hline(data = plot_line, aes(yintercept = mE), 
+             color = "blue3", size = .5) +
+  scale_fill_manual(values = c("#CFC096", "#00285E")) +
+  theme_bw()
+
+cap = paste0("**Figure 2.** *Number of students for each outcome of ",
+             "Orientation for 16 sections.* The yellow and blue lines ",
+             "represent the average counts for BOT and EOT respectively.")
+```
+
+## Group Preference
+
+### Descriptive Statistics
+
+```{r Descriptive - group preference, fig.align="center", fig.cap=cap}
+BOT_gp = data.frame(table(BOT$sections, BOT$GroupPreference))
+colnames(BOT_gp) = c("sections", "group_preference", "counts")
+BT_gp = BOT_gp %>% group_by(group_preference) %>% summarise(BOT = sum(counts))
+
+EOT_gp = data.frame(table(EOT$sections, EOT$ET_GroupPreference))
+colnames(EOT_gp) = c("sections", "group_preference", "counts")
+ET_gp = EOT_gp %>% group_by(group_preference) %>% summarise(EOT = sum(counts))
+
+df_gp = left_join(BT_gp, ET_gp, by = c("group_preference"))
+
+# Bar plot
+pivot_longer(df_gp, 2:3) %>%
+  group_by(name) %>% arrange(-value) %>%
+  mutate(group_preference = 
+           factor(group_preference, 
+                  levels = c("Alone", "Partner", "Group"))) %>%
+  ggplot(aes(x = group_preference, y = value, fill = name)) +
+  geom_bar(position="dodge", stat="identity") +
+  geom_text(aes(label=value), vjust=-.6, color="black",
+            position = position_dodge(0.9), size=3.5) +
+  ylab("Counts") + labs(fill = "Survey") + xlab("") +
+  scale_fill_manual(values = c("#FFcb05", "#00285E")) +
+  theme_bw()
+
+cap = paste("**Figure 3.** *Number of students for each option.* Group ",
+            "remained the highest frequency but the completion rate dropped ",
+            "for the EOT survey.")
+```
+
+### Interaction between options
+```{r Group Preference - Interaction}
+df = EOT %>% left_join(BOT, by = "user_id") %>%
+  select(user_id, GroupPreference, ET_GroupPreference) %>% drop_na() %>%
+  mutate(BT_gp = factor(GroupPreference, 
+                  levels = c("Alone", "Partner", "Group")),
+         ET_gp = factor(ET_GroupPreference, 
+                  levels = c("Alone", "Partner", "Group")))
+
+tbl = table(BOT = df$BT_gp, EOT = df$ET_gp)
+tbl = prop.table(tbl, 1)
+
+df_tbl = 
+  as.data.frame(table(BOT = df$BT_gp, EOT = df$ET_gp)) %>%
+  left_join(as.data.frame(tbl), by = c("BOT", "EOT")) %>%
+  mutate(Freq = sprintf("%.0f (%.0f%%)", Freq.x, Freq.y*100)) %>%
+  select(BOT, EOT, Freq) %>%
+  rename(`Frequency (Percentage)` = Freq) %>%
+  arrange(BOT)
+
+wide = pivot_wider(df_tbl, names_from = EOT, values_from = `Frequency (Percentage)`)
+names(wide)[1] = ""
+
+knitr::kable(wide)
+```
+
+### Interaction between options by section
+```{r GP - sections}
+df_sec = EOT %>% left_join(BOT, by = c("user_id", "sections")) %>%
+  transmute(user_id, GroupPreference, ET_GroupPreference,
+            sections = str_remove(sections, "Section 0")) %>% drop_na() %>%
+  mutate(BOT = factor(GroupPreference, 
+                  levels = c("Alone", "Partner", "Group")),
+         EOT = factor(ET_GroupPreference, 
+                  levels = c("Alone", "Partner", "Group")))
+
+tbl_sec = table(BOT = df_sec$BOT, EOT = df_sec$EOT, Section = df_sec$sections)
+tbl_sec = prop.table(tbl_sec, c(3,1))
+
+df_tbl_sec = as.data.frame(prop.table(tbl_sec, c(3,1))) %>%
+  transmute(Section, BOT, EOT, Freq = sprintf("%2.0f%%", Freq*100)) %>%
+  arrange(BOT)
+
+wide = pivot_wider(df_tbl_sec, names_from = EOT, values_from = Freq)
+names(wide)[2] = "BOT \\ EOT"
+
+options(DT.options = list(pageLength = 16))
+datatable(wide, rownames = F, options = list(
+  columnDefs = list(list(className = 'dt-center', targets = "_all"))))
+```
+
+```{r GP - Sections descriptive, fig.cap=cap, fig.width = 9}
+BT_gps = BOT_gp %>% group_by(sections, group_preference) %>% 
+  summarise(BOT = sum(counts))
+ET_gps = EOT_gp %>% group_by(sections, group_preference) %>% 
+  summarise(EOT = sum(counts))
+
+df_gps = left_join(BT_gps, ET_gps, by = c("sections", "group_preference"))
+        
+# Average counts
+plot_line = df_gps %>% 
+  mutate(group_preference = 
+           factor(group_preference, 
+                  levels = c("Alone", "Partner", "Group"))) %>%
+  group_by(group_preference) %>% 
+  summarise(mB = mean(BOT), mE = mean(EOT, na.rm = T))
+
+# Histogram
+df_gps %>% pivot_longer(3:4, names_to = "Survey") %>%
+  mutate(Sections = str_remove(sections, "Section 0"),
+         group_preference = factor(group_preference, 
+                                   levels = c("Alone", "Partner", "Group"))) %>%
+  ggplot(aes(x = Sections, y = value, fill = Survey)) +
+  geom_bar(na.rm = T, stat="identity", position="dodge") + 
+  facet_wrap(~group_preference, nrow = 2) + 
+  geom_hline(data = plot_line, aes(yintercept = mB), 
+             color = "gold2", size = .5) +
+  geom_hline(data = plot_line, aes(yintercept = mE), 
+             color = "blue3", size = .5) +
+  xlab("Sections") + ylab("Counts") + labs(fill = "Survey") +
+  scale_fill_manual(values = c("#CFC096", "#00285E")) +
+  theme_bw()
+
+cap = paste0("**Figure 4.** *Number of students for each option of ",
+             "GroupPreference for 16 sections.* The yellow and blue lines ",
+             "represent the average counts for BOT and EOT respectively.")
+```
+
+## EOT - Eval_Use, Eval_Useful
+### Eval_Use
+
+```{r use table}
+df_eval = left_join(EOT, BOT, by = c("user_id", "sections")) %>%
+  filter(Gender == "Male" | Gender == "Female") %>%
+  mutate(Sections = str_remove(sections, "Section 0"))
+
+use = df_eval %>% group_by(Eval_Use, Gender) %>% 
+  summarise(Counts = n()) %>%
+  pivot_wider(names_from = Eval_Use, values_from = Counts) %>%
+  rename(Eval_Use = Gender)
+
+use$Eval_Use = as.character(use$Eval_Use)
+use[3, ] = c("Total", colSums(use[,-1]))
+knitr::kable(use)
+```
+
+```{r Eval_Use - all, fig.align="center", fig.cap=cap}
+df_eval %>%
+  ggplot(aes(x = Eval_Use, fill = Gender)) +
+  geom_bar() +
+  scale_fill_manual(values = c("#FFCB05", "#00285E"))
+cap = paste0("**Figure 5.** *Number of students for Eval_Use (Scale 1 to 5 ",
+             "represents not very interested to very interested.)* The plot ",
+             "appears to be bimodal.")
+```
+
+```{r Eval_Use - section, fig.width=9, fig.align="center", fig.height=7, fig.cap=cap}
+df_eval %>% group_by(sections) %>%
+  ggplot(aes(x = Sections, fill = Gender)) +
+  geom_bar() + 
+  scale_fill_manual(values = c("#FFCB05", "#00285E")) +
+  xlab("") +
+  facet_wrap(~Eval_Use, nrow = 5) +
+  theme_bw()
+cap = paste0("**Figure 6.** *Number of students for each section.*")
+```
+
+### Eval_Useful
+
+```{r useful table}
+useful = df_eval %>% group_by(Eval_Useful, Gender) %>% 
+  summarise(Counts = n()) %>%
+  pivot_wider(names_from = Eval_Useful, values_from = Counts) %>%
+  rename(Eval_Useful = Gender)
+
+useful$Eval_Useful = as.character(useful$Eval_Useful)
+useful[3, ] = c("Total", colSums(useful[,-1]))
+knitr::kable(useful)
+```
+
+```{r Eval_Useful - all, fig.align="center", fig.cap=cap}
+df_eval %>%
+  ggplot(aes(x = Eval_Useful, fill = Gender)) +
+  geom_bar() +
+  scale_fill_manual(values = c("#FFCB05", "#00285E"))
+cap = paste0("**Figure 7.** *Number of students for Eval_Useful (Scale 1 to 5 ",
+             "represents not very useful to very useful).*")
+```
+
+```{r Eval_Useful - section, fig.width = 9, fig.align = "center", fig.height=7, fig.cap=cap}
+df_eval %>% group_by(sections) %>%
+  ggplot(aes(x = Sections, fill = Gender)) +
+  geom_bar() + 
+  scale_fill_manual(values = c("#FFCB05", "#00285E")) +
+  xlab("") +
+  facet_wrap(~Eval_Useful, nrow = 5) +
+  theme_bw()
+cap = paste0("**Figure 8.** *Number of students for each section.*")
+```
+
