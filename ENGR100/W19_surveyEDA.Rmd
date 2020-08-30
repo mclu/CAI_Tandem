@@ -1,0 +1,230 @@
+---
+title: "Academic Innovation"
+subtitle: "ENGR100 Winter 2019"
+author: "Ming-Chen Lu, mingchlu@umich.edu"
+date: "March 20, 2020"
+geometry: "left = 2cm, right = 2cm, top = 2cm, bottom = 2cm"
+output: 
+  html_document:
+    toc: yes
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE, echo = FALSE, result = "asis",
+                      fig.align = "center", fig.width = 9)
+# Libraries: -------------------------------------------------------------------
+library(tidyverse)
+library(ggpubr)
+library(HH)
+library(coin)
+library(knitr)
+
+# Read in data: ----------------------------------------------------------------
+setwd("/Users/Amy/Desktop/AI/tandem/ENGR100_W19")
+BOT = read_csv("ENGR100_W19_BOT.csv")
+EOT = read_csv("ENGR100_W19_EOT_v2.csv")
+MT = read_csv("ENGR100_W19_MT.csv")
+team = read_csv("ENGR100_W19_teamid.csv")
+
+# Data Cleaning: ---------------------------------------------------------------
+names(EOT) = str_remove(names(EOT), "tandem__")
+EOT_var = c("user_id", "ET_Extraversion", "ET_Procrastination", "ET_Control", 
+            "ET_SpeakUp", "ET_GroupPreference", "ET_Orientation", "ET_Concerns")
+BOT_var = c("user_id", "Extraversion", "Procrastination", "Control", "SpeakUp", 
+            "GroupPreference", "BT_Concerns")
+
+BOT = BOT %>% dplyr::select(BOT_var) %>%
+  mutate(BT_Concerns = str_split(str_replace_all(BT_Concerns, "\\[|\\]|\\'", ''), ", "),
+         GroupPreference = factor(GroupPreference, ordered = TRUE, 
+                                  levels = c("Alone", "Partner", "Group"))) %>%
+  rename("BT_Extraversion" = "Extraversion", "BT_Control" = "Control", 
+         "BT_Procrastination" = "Procrastination", "BT_SpeakUp" = "SpeakUp", 
+         "BT_GroupPreference" = "GroupPreference") %>%
+  drop_na()
+
+EOT = EOT %>% dplyr::select(EOT_var) %>%
+  mutate(ET_Concerns = str_split(str_replace_all(ET_Concerns, "\\[|\\]|\\'", ''), ", "),
+         ET_GroupPreference = factor(ET_GroupPreference, ordered = TRUE, 
+                                     levels = c("Alone", "Partner", "Group")))
+
+# Merge BOT and EOT - wide
+df_wide = inner_join(EOT, BOT, by = "user_id")
+df_wide = inner_join(df_wide, team, by = "user_id")
+
+# Merge BOT and EOT - long (numercial variables only)
+b = pivot_longer(BOT[, 1:5], cols = 2:5) %>% 
+  mutate(name = str_replace_all(name, "BT_", ""), survey = "BOT")
+e = pivot_longer(EOT[, 1:5], cols = 2:5) %>%
+  mutate(name = str_replace_all(name, "ET_", ""), survey = "EOT")
+df_long = rbind(b, e)
+```
+
+### Objective
+**Are there any significant changes in how students in how students respond to the Tandem surveys from the beginning of the term to the end of the term?**
+
+- Survey data files and PDFs can be found [here](https://umich.app.box.com/folder/102515336861).
+
+### Where would you place yourself on the scales? 
+
+We examined the differences using the diverging stacked bar chart and modified Wilcoxon signed-rank test (Pratt 1959). The intent of the diverging stacked bar chart is to compare percents within subgroups of the survey population. And the modified Wilcoxon signed-rank test is used to assess whether BOT and EOT having the same distribution. The null hypothesis here is the median difference between pairs of responses is zero. The p-value for each characteristic will be provided below.
+
+```{r scales, fig.cap=cap}
+# Diverging Stacked Bar Chart
+div_plot = df_long %>% 
+  group_by(name, survey, value) %>% 
+  summarise(counts = n()) %>% 
+  pivot_wider(names_from = "value", values_from = "counts") %>%
+  replace_na(list(`1` = 0))
+
+likert(survey ~ . | name, data = div_plot, as.percent = TRUE, layout = c(1, 4),
+       main = "Are there differences over the term in ENGR100 W19?")
+
+cap = paste0("**Figure 1.** *Diverging stacked bar chart.* The x-axis labels show the percent agreeing (totaled over all levels of agreement) and the total counts are displayed as the 
+right axis labels.")
+```
+
+##### Control
+*I think it's good to share work,even if my team might finishtasks differently than me. <-> ’d rather pick up extra work soI know it’s done right.*
+
+Student responses spread out to both sides and we observe larger percentage of students would rather pick up extra work so they know it's done right.
+
+```{r wilcoxon - control}
+cat("P-value: ", 
+    pvalue(wilcoxsign_test(df_wide$ET_Control ~ df_wide$BT_Control)))
+```
+We have enough statistical evidence to reject the null hypothesis and conclude that the median difference between BOT and EOT is not zero and the two distributions are different at level $\alpha = 0.05$.
+
+##### Extraversion
+
+Either from BOT or EOT, the proportion of students that tend to speak up in groups is larger. Over the course of the term, student responses also spread out to both sides and more students scaled higher for often speaking up in groups.
+
+```{r wilcoxon - extraversion}
+cat("P-value: ", 
+    pvalue(wilcoxsign_test(df_wide$ET_Extraversion ~ df_wide$BT_Extraversion)))
+```
+
+##### Procrastination
+
+When observed the extreme value from both sides (scale 1 and 7), there is an increasing percentage of students that did work close to a deadline compared to working on project as soon as it is assigned.
+
+```{r wilcoxon - procrastination}
+cat("P-value: ", pvalue(wilcoxsign_test(df_wide$ET_Procrastination ~ df_wide$BT_Procrastination)))
+```
+
+##### Spekaup 
+
+The distribution of BOT and EOT looks similar. However, in EOT, we observe extreme value of 1 suggesting that some students rather hold back ideas orpreferences if their group stays happy.
+
+```{r wilcoxon - spekaup}
+cat("P-value", pvalue(wilcoxsign_test(df_wide$ET_SpeakUp ~ df_wide$BT_SpeakUp)))
+```
+
+----
+
+### Group Preference
+```{r group preference}
+tbl = table(BOT = df_wide$BT_GroupPreference, EOT = df_wide$ET_GroupPreference)
+tbl = prop.table(tbl, 1)
+
+df_tbl = 
+  as.data.frame(table(BOT = df_wide$BT_GroupPreference, 
+                      EOT = df_wide$ET_GroupPreference)) %>%
+  left_join(as.data.frame(tbl), by = c("BOT", "EOT")) %>%
+  mutate(Freq = sprintf("%.0f (%.0f%%)", Freq.x, Freq.y*100)) %>%
+  dplyr::select(BOT, EOT, Freq) %>%
+  rename(`Frequency (Percentage)` = Freq) %>%
+  arrange(BOT)
+
+wide = pivot_wider(df_tbl, names_from = EOT, values_from = `Frequency (Percentage)`)
+names(wide)[1] = ""
+
+cap = paste0("**Table 1.** *Interactions of Group Preference Options.* Rows ", 
+             "represent BOT and columns represent EOT.")
+knitr::kable(wide, caption = cap)
+```
+
+----
+
+### What caused the shifts in the control group? (3/27 update)
+
+Was the change due to some students switching from a 1 to a 7 or was there a more gradual shift? And do we see any particular teams where this jumps out more or was it spread across teams equally?
+
+Here is the table that shows the frequency of differences.
+From this table, students seemed to have a more gradual shift.
+
+```{r control shift table, warning=F}
+df = df_wide %>% transmute(diff_control = ET_Control - BT_Control) %>% 
+  group_by(diff_control) %>% summarise(counts = n()) %>% t() 
+colnames(df) = paste0("Diff = ", as.character(df[1,]))
+
+cap = paste0("**Table 2.** *Frequency of differences.*")
+kable(t(df[-1,]), caption = cap)
+```
+
+
+```{r control shift plot, fig.cap=cap}
+ls = list()
+for(i in 0:5){
+  ls[[i+1]] = df_wide %>% 
+    transmute(user_id, BoT = BT_Control, EoT = ET_Control, 
+            diff = ET_Control - BT_Control) %>%
+    filter(abs(diff) == i) %>% group_by(BoT, EoT) %>% 
+    summarise(width = n()) %>% ungroup() %>%
+    mutate(id = c(1:nrow(.))) %>%
+    pivot_longer(1:2, names_to = "survey", values_to = "scale") %>%
+    ggplot(aes(x = survey, y = scale, group = id)) +
+    geom_point(aes(color = width)) +
+    geom_line(aes(color = width)) +
+    ggtitle(paste0("Difference = ", i)) +
+    scale_colour_gradient(high = "#132B43", low = "#56B1F7") +
+    scale_y_discrete(limits=c("1","2","3","4","5","6","7")) +
+    guides(color = FALSE, size = FALSE)
+}
+
+ggarrange(ls[[1]], ls[[2]], ls[[3]], ls[[4]], ls[[5]], ls[[6]])
+cap = paste0("**Figure2.** *Distribution of the shifts for each difference.*",
+             "The darker line means higher counts.")
+```
+
+<br>
+
+We also examine the shift from the team perspective. Each line represents a student and I excluded the students that had missing data either from BoT or EoT. I personally found the changes quite diverse.
+
+<br>
+
+```{r contro shift - team, fig.cap=cap, warning=FALSE}
+library(plotly)
+ctr_scale = df_wide %>% 
+    transmute(user_id, BoT = BT_Control, EoT = ET_Control) %>%
+  pivot_longer(2:3, names_to = "survey", values_to = "scale")
+
+plot = df_wide %>% 
+  transmute(user_id, team_id, diff = ET_Control - BT_Control, 
+            BoT = BT_GroupPreference, EoT = ET_GroupPreference) %>%
+  pivot_longer(4:5, names_to = "survey", values_to = "GroupPreference") %>%
+  left_join(ctr_scale, by = c("user_id", "survey")) %>%
+  ggplot() +
+  geom_line(aes(x = survey, y = scale, group = user_id)) +
+  geom_point(aes(x = survey, y = scale, color = GroupPreference, 
+                 shape = GroupPreference), alpha = .85) +
+  facet_wrap(~team_id)
+ggplotly(plot)
+cap = paste0("**Figure 3.** *Distribution of the shifts by group with point ",
+             "colors representing GroupPreference.*")
+```
+
+```{r control shift - team1, fig.cap=cap}
+df_wide$ET_Orientation = 
+  factor(df_wide$ET_Orientation,
+         levels = c("Grade", "Practice", "Performance", 
+                    "Learn", "Groupwork", "None")) 
+df_wide %>% 
+    transmute(user_id, team_id, BoT = BT_Control, EoT = ET_Control, 
+              diff = ET_Control - BT_Control, ET_Orientation) %>%
+  pivot_longer(3:4, names_to = "survey", values_to = "scale") %>%
+  ggplot(aes(x = survey, y = scale, group = user_id)) +
+  geom_line(aes(color = ET_Orientation)) +
+  facet_wrap(~team_id) + labs(color = "ET Orientation")
+cap = paste0("**Figure 4.** *Distribution of the shifts by group with line ",
+             "colors representing ET_Orientation.*")
+```
